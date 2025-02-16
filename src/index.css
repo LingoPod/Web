@@ -1,0 +1,126 @@
+@import "tailwindcss/preflight";
+@tailwind utilities;
+
+:root {
+  /* Dark theme colors */
+  --primary-bg: #000000;
+  --secondary-bg: #1c1c1e;
+  --card-bg: #2c2c2e;
+  --primary-text: #ffffff;
+  --secondary-text: rgba(255, 255, 255, 0.7);
+  --accent-color: #0a84ff;
+  --accent-hover: #007aff;
+  --error-color: #ff453a;
+  --success-color: #32d74b;
+  --border-color: rgba(255, 255, 255, 0.1);
+
+  font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+
+  color-scheme: dark;
+  color: var(--primary-text);
+  background-color: var(--primary-bg);
+
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+a {
+  font-weight: 500;
+  color: var(--accent-color);
+  text-decoration: inherit;
+  transition: color 0.2s ease;
+}
+
+a:hover {
+  color: var(--accent-hover);
+}
+
+body {
+  margin: 0;
+  display: flex;
+  place-items: center; 
+  background-color: var(--primary-bg);
+  color: var(--primary-text);
+}
+
+h1 {
+  font-size: 3.2em;
+  line-height: 1.1;
+}
+
+button {
+  border-radius: 8px;
+  border: 1px solid transparent;
+  padding: 0.6em 1.2em;
+  font-size: 1em;
+  font-weight: 500;
+  font-family: inherit;
+  background-color: #1a1a1a;
+  cursor: pointer;
+  transition: border-color 0.25s;
+}
+button:hover {
+  border-color: #646cff;
+}
+button:focus,
+button:focus-visible {
+  outline: 4px auto -webkit-focus-ring-color;
+}
+
+/* Ant Design dark theme overrides */
+.ant-btn-primary {
+  background: var(--accent-color) !important;
+}
+
+.ant-btn-primary:hover {
+  background: var(--accent-hover) !important;
+}
+
+.ant-input {
+  background: var(--secondary-bg) !important;
+  border-color: var(--border-color) !important;
+}
+
+.ant-input:hover, .ant-input:focus {
+  border-color: var(--accent-color) !important;
+}
+
+.ant-typography {
+  color: var(--primary-text) !important;
+}
+
+/* Custom scrollbar for webkit browsers */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--secondary-bg);
+}
+
+::-webkit-scrollbar-thumb {
+  background: #4c4c4e;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #6c6c6e;
+}
+
+/* Custom utility classes */
+.text-gradient {
+  background: linear-gradient(to right, var(--accent-color), var(--accent-hover));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.card-shadow {
+  box-shadow:
+    0 4px 6px -1px rgba(0, 0, 0, 0.1),
+    0 2px 4px -1px rgba(0, 0, 0, 0.06);
+}
