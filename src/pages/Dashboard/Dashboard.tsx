@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Layout, Button, Table, Modal, Form, Input, Space, Popconfirm, message, ConfigProvider, theme, Tabs, Select, Upload } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined, LogoutOutlined, UploadOutlined, SoundOutlined } from '@ant-design/icons';
 import { useAuth } from '../../context/AuthContext';
@@ -26,14 +26,13 @@ const Dashboard: React.FC = () => {
   const [editingContent, setEditingContent] = useState<Content | null>(null);
 
   // Shared state
-  const { signOut, profile } = useAuth();
+  const { signOut } = useAuth();
   const [loading, setLoading] = useState(false);
   const [categoryForm] = Form.useForm();
   const [topicForm] = Form.useForm();
   const [contentForm] = Form.useForm();
   const [audioLoading, setAudioLoading] = useState(false);
   const [currentAudio, setCurrentAudio] = useState<HTMLAudioElement | null>(null);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
     fetchCategories();
