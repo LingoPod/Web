@@ -9,6 +9,24 @@ import { getErrorMessage } from '../../utils/message';
 
 const { Header, Content: LayoutContent } = Layout;
 
+// Tip genişletmeleri ile ilgili hataları düzeltmek için Content ve Topic tiplerini genişletelim
+interface ExtendedTopic extends Topic {
+  short_description?: string;
+  categories?: {
+    name: string;
+  };
+}
+
+interface ExtendedContent extends Omit<Content, 'audio_url'> {
+  short_description?: string;
+  description?: string;
+  tags?: string[];
+  topics?: {
+    title: string;
+  };
+  audio_url: string | null;
+}
+
 const Dashboard: React.FC = () => {
   // Categories state
   const [categories, setCategories] = useState<Category[]>([]);
@@ -16,14 +34,17 @@ const Dashboard: React.FC = () => {
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
 
   // Topics state
-  const [topics, setTopics] = useState<Topic[]>([]);
+  const [topics, setTopics] = useState<ExtendedTopic[]>([]);
   const [topicModalVisible, setTopicModalVisible] = useState(false);
-  const [editingTopic, setEditingTopic] = useState<Topic | null>(null);
+  const [editingTopic, setEditingTopic] = useState<ExtendedTopic | null>(null);
 
   // Content state
-  const [contents, setContents] = useState<Content[]>([]);
+  const [contents, setContents] = useState<ExtendedContent[]>([]);
   const [contentModalVisible, setContentModalVisible] = useState(false);
-  const [editingContent, setEditingContent] = useState<Content | null>(null);
+  const [editingContent, setEditingContent] = useState<ExtendedContent | null>(null);
+
+  // Tüm etiketleri saklayan state
+  const [allTags, setAllTags] = useState<string[]>([]);
 
   // Shared state
   const { signOut } = useAuth();
@@ -38,17 +59,41 @@ const Dashboard: React.FC = () => {
     fetchCategories();
     fetchTopics();
     fetchContents();
+    fetchAllTags();
   }, []);
+
+  // Düzenleme durumunda form alanlarını ayarlamak için effect
+  useEffect(() => {
+    if (editingContent) {
+      contentForm.setFieldsValue(editingContent);
+    }
+  }, [editingContent, contentForm]);
+
+  useEffect(() => {
+    if (editingTopic) {
+      topicForm.setFieldsValue(editingTopic);
+    }
+  }, [editingTopic, topicForm]);
+
+  useEffect(() => {
+    if (editingCategory) {
+      categoryForm.setFieldsValue(editingCategory);
+    }
+  }, [editingCategory, categoryForm]);
 
   // Categories functions
   const fetchCategories = async () => {
     try {
       setLoading(true);
+      
+      console.log('Kategoriler alınıyor...');
       const { data, error } = await supabase
         .from('categories')
         .select('*')
         .order('created_at', { ascending: false });
 
+      console.log('Kategori yanıtı:', { data, error });
+      
       if (error) throw error;
       setCategories(data || []);
     } catch (error) {
@@ -63,13 +108,17 @@ const Dashboard: React.FC = () => {
   const fetchTopics = async () => {
     try {
       setLoading(true);
+      
+      console.log('Konular alınıyor...');
       const { data, error } = await supabase
         .from('topics')
         .select('*, categories(name)')
         .order('created_at', { ascending: false });
 
+      console.log('Konu yanıtı:', { data, error });
+      
       if (error) throw error;
-      setTopics(data || []);
+      setTopics(data as ExtendedTopic[] || []);
     } catch (error) {
       message.error(getErrorMessage(error) || 'Konular yüklenirken bir hata oluştu');
       console.error('Konular yüklenirken hata:', error);
@@ -82,13 +131,17 @@ const Dashboard: React.FC = () => {
   const fetchContents = async () => {
     try {
       setLoading(true);
+      
+      console.log('İçerikler alınıyor...');
       const { data, error } = await supabase
         .from('contents')
         .select('*, topics(title)')
         .order('created_at', { ascending: false });
 
+      console.log('İçerik yanıtı:', { data, error });
+      
       if (error) throw error;
-      setContents(data || []);
+      setContents(data as ExtendedContent[] || []);
     } catch (error) {
       message.error(getErrorMessage(error) || 'İçerikler yüklenirken bir hata oluştu');
       console.error('İçerikler yüklenirken hata:', error);
@@ -97,34 +150,70 @@ const Dashboard: React.FC = () => {
     }
   };
 
-  const handleAddEditTopic = async (values: { category_id: string; title: string; description: string }) => {
+  // Tüm etiketleri getiren fonksiyon
+  const fetchAllTags = async () => {
     try {
+      
+      console.log('Etiketler alınıyor...');
+      const { data, error } = await supabase
+        .from('contents')
+        .select('tags');
+
+      console.log('Etiket yanıtı:', { data, error });
+      
+      if (error) throw error;
+
+      // Tüm etiketleri bir dizide toplama
+      const tagsArray = data
+        .flatMap(item => item.tags || [])
+        .filter(Boolean);
+      
+      // Tekrarlanan etiketleri kaldırma
+      const uniqueTags = [...new Set(tagsArray)];
+      setAllTags(uniqueTags);
+    } catch (error) {
+      message.error(getErrorMessage(error) || 'Etiketler alınırken hata oluştu');
+      console.error('Etiketler alınırken hata:', error);
+    }
+  };
+
+  const handleAddEditTopic = async (values: { category_id: string; title: string; short_description: string; description: string }) => {
+    try {
+      console.log('Konu ekle/düzenle işlemi başlatılıyor...', values);
       setLoading(true);
+      
       if (editingTopic) {
+        console.log('Konu güncelleniyor:', editingTopic.id);
         const { error } = await supabase
           .from('topics')
           .update({
             category_id: values.category_id,
             title: values.title,
+            short_description: values.short_description,
             description: values.description,
           })
           .eq('id', editingTopic.id);
 
+        console.log('Konu güncelleme yanıtı:', { error });
+        
         if (error) throw error;
         message.success('Konu başarıyla güncellendi');
+        closeTopicModal();
+        await fetchTopics();
       } else {
-        const { error } = await supabase
+        console.log('Yeni konu ekleniyor');
+        const { error, data } = await supabase
           .from('topics')
           .insert([values])
           .select();
 
+        console.log('Konu ekleme yanıtı:', { error, data });
+        
         if (error) throw error;
         message.success('Konu başarıyla eklendi');
+        closeTopicModal();
+        await fetchTopics();
       }
-
-      setTopicModalVisible(false);
-      topicForm.resetFields();
-      await fetchTopics();
     } catch (error) {
       message.error(getErrorMessage(error) || 'İşlem sırasında bir hata oluştu');
       console.error('Konu kaydetme hatası:', error);
@@ -133,30 +222,54 @@ const Dashboard: React.FC = () => {
     }
   };
 
-  const handleAddEditContent = async (values: { topic_id: string; level: string; content: string }) => {
+  const handleAddEditContent = async (values: { topic_id: string; level: string; content: string; short_description: string; description: string; tags: string[] }) => {
     try {
+      console.log('İçerik ekle/düzenle işlemi başlatılıyor...', values);
       setLoading(true);
+      
       if (editingContent) {
+        console.log('İçerik güncelleniyor:', editingContent.id);
         const { error } = await supabase
           .from('contents')
-          .update(values)
+          .update({
+            topic_id: values.topic_id,
+            level: values.level,
+            content: values.content,
+            short_description: values.short_description,
+            description: values.description,
+            tags: values.tags
+          })
           .eq('id', editingContent.id);
 
+        console.log('İçerik güncelleme yanıtı:', { error });
+        
         if (error) throw error;
         message.success('İçerik başarıyla güncellendi');
+        closeContentModal();
+        await fetchContents();
+        await fetchAllTags();
       } else {
-        const { error } = await supabase
+        console.log('Yeni içerik ekleniyor');
+        const { error, data } = await supabase
           .from('contents')
-          .insert([values])
+          .insert([{
+            topic_id: values.topic_id,
+            level: values.level,
+            content: values.content,
+            short_description: values.short_description,
+            description: values.description,
+            tags: values.tags
+          }])
           .select();
 
+        console.log('İçerik ekleme yanıtı:', { error, data });
+        
         if (error) throw error;
         message.success('İçerik başarıyla eklendi');
+        closeContentModal();
+        await fetchContents();
+        await fetchAllTags();
       }
-
-      setContentModalVisible(false);
-      contentForm.resetFields();
-      await fetchContents();
     } catch (error) {
       message.error(getErrorMessage(error) || 'İşlem sırasında bir hata oluştu');
       console.error('İçerik kaydetme hatası:', error);
@@ -167,9 +280,13 @@ const Dashboard: React.FC = () => {
 
   const handleDeleteTopic = async (id: string) => {
     try {
+      console.log('Konu siliniyor:', id);
       setLoading(true);
+      
       const { error } = await supabase.from('topics').delete().eq('id', id);
 
+      console.log('Konu silme yanıtı:', { error });
+      
       if (error) throw error;
       message.success('Konu başarıyla silindi');
       fetchTopics();
@@ -183,9 +300,13 @@ const Dashboard: React.FC = () => {
 
   const handleDeleteContent = async (id: string) => {
     try {
+      console.log('İçerik siliniyor:', id);
       setLoading(true);
+      
       const { error } = await supabase.from('contents').delete().eq('id', id);
 
+      console.log('İçerik silme yanıtı:', { error });
+      
       if (error) throw error;
       message.success('İçerik başarıyla silindi');
       fetchContents();
@@ -199,9 +320,13 @@ const Dashboard: React.FC = () => {
 
   const handleDelete = async (id: string) => {
     try {
+      console.log('Kategori siliniyor:', id);
       setLoading(true);
+      
       const { error } = await supabase.from('categories').delete().eq('id', id);
 
+      console.log('Kategori silme yanıtı:', { error });
+      
       if (error) throw error;
       message.success('Kategori başarıyla silindi');
       fetchCategories();
@@ -223,10 +348,32 @@ const Dashboard: React.FC = () => {
     }
   };
 
+  // Modal kapatma işlemleri için ortak fonksiyonlar
+  const closeContentModal = () => {
+    setContentModalVisible(false);
+    setEditingContent(null);
+    contentForm.resetFields();
+  };
+
+  const closeTopicModal = () => {
+    setTopicModalVisible(false);
+    setEditingTopic(null);
+    topicForm.resetFields();
+  };
+
+  const closeCategoryModal = () => {
+    setModalVisible(false);
+    setEditingCategory(null);
+    categoryForm.resetFields();
+  };
+
   const handleAddEdit = async (values: { name: string; description: string }) => {
     try {
+      console.log('Kategori ekle/düzenle işlemi başlatılıyor...', values);
       setLoading(true);
+      
       if (editingCategory) {
+        console.log('Kategori güncelleniyor:', editingCategory.id);
         const { error } = await supabase
           .from('categories')
           .update({
@@ -235,10 +382,15 @@ const Dashboard: React.FC = () => {
           })
           .eq('id', editingCategory.id);
 
+        console.log('Kategori güncelleme yanıtı:', { error });
+        
         if (error) throw error;
         message.success('Kategori başarıyla güncellendi');
+        closeCategoryModal();
+        await fetchCategories();
       } else {
-        const { error } = await supabase
+        console.log('Yeni kategori ekleniyor');
+        const { error, data } = await supabase
           .from('categories')
           .insert([
             {
@@ -248,13 +400,13 @@ const Dashboard: React.FC = () => {
           ])
           .select();
 
+        console.log('Kategori ekleme yanıtı:', { error, data });
+        
         if (error) throw error;
         message.success('Kategori başarıyla eklendi');
+        closeCategoryModal();
+        await fetchCategories();
       }
-
-      setModalVisible(false);
-      categoryForm.resetFields();
-      await fetchCategories();
     } catch (error) {
       message.error(getErrorMessage(error) || 'İşlem sırasında bir hata oluştu');
       console.error('Kategori kaydetme hatası:', error);
@@ -265,19 +417,22 @@ const Dashboard: React.FC = () => {
 
   const handleAudioUpload = async (file: File, content_id: string) => {
     try {
+      console.log('Ses dosyası yükleniyor...', { content_id, fileName: file.name });
       setAudioLoading(true);
       const fileExt = file.name.split('.').pop();
       const fileName = `${content_id}.${fileExt}`;
       const filePath = `audio/${fileName}`;
 
       // Upload to Supabase Storage
-      const { error: uploadError, data: _ } = await supabase.storage
+      const { error: uploadError, data: uploadData } = await supabase.storage
         .from('lingopod')
         .upload(filePath, file, {
           cacheControl: '3600',
           upsert: true
         });
 
+      console.log('Ses dosyası yükleme yanıtı:', { uploadError, uploadData });
+      
       if (uploadError) throw uploadError;
 
       // Get public URL
@@ -285,6 +440,8 @@ const Dashboard: React.FC = () => {
         .from('lingopod')
         .getPublicUrl(filePath);
 
+      console.log('Public URL:', data);
+      
       if (!data.publicUrl) throw new Error('Public URL alınamadı');
 
       // Update content record with audio URL
@@ -293,6 +450,8 @@ const Dashboard: React.FC = () => {
         .update({ audio_url: data.publicUrl })
         .eq('id', content_id);
 
+      console.log('İçerik güncelleme yanıtı:', { updateError });
+      
       if (updateError) throw updateError;
 
       message.success('Ses dosyası başarıyla yüklendi');
@@ -307,6 +466,7 @@ const Dashboard: React.FC = () => {
 
   const handleAudioDelete = async (content_id: string, audio_url: string) => {
     try {
+      console.log('Ses dosyası siliniyor...', { content_id, audio_url });
       setLoading(true);
       const fileName = audio_url.split('/').pop();
       
@@ -315,6 +475,8 @@ const Dashboard: React.FC = () => {
         .from('lingopod')
         .remove([`audio/${fileName}`]);
 
+      console.log('Ses dosyası silme yanıtı:', { deleteError });
+      
       if (deleteError) throw deleteError;
 
       // Update content record
@@ -323,6 +485,8 @@ const Dashboard: React.FC = () => {
         .update({ audio_url: null })
         .eq('id', content_id);
 
+      console.log('İçerik güncelleme yanıtı:', { updateError });
+      
       if (updateError) throw updateError;
 
       message.success('Ses dosyası başarıyla silindi');
@@ -358,6 +522,31 @@ const Dashboard: React.FC = () => {
       key: 'name',
       sorter: (a: Category, b: Category) => a.name.localeCompare(b.name),
       width: '30%',
+      filterDropdown: ({ setSelectedKeys, selectedKeys, confirm, clearFilters }: any) => (
+        <div style={{ padding: 8 }}>
+          <Input
+            placeholder="Ara"
+            value={selectedKeys[0]}
+            onChange={e => setSelectedKeys(e.target.value ? [e.target.value] : [])}
+            onPressEnter={() => confirm()}
+            style={{ width: 188, marginBottom: 8, display: 'block' }}
+          />
+          <Space>
+            <Button
+              type="primary"
+              onClick={() => confirm()}
+              size="small"
+              style={{ width: 90 }}
+            >
+              Ara
+            </Button>
+            <Button onClick={() => clearFilters()} size="small" style={{ width: 90 }}>
+              Sıfırla
+            </Button>
+          </Space>
+        </div>
+      ),
+      onFilter: (value: any, record: Category) => record.name.toLowerCase().includes(value.toLowerCase()),
     },
     {
       title: 'Açıklama',
@@ -365,6 +554,32 @@ const Dashboard: React.FC = () => {
       key: 'description',
       width: '50%',
       render: (text: string) => text || '-',
+      filterDropdown: ({ setSelectedKeys, selectedKeys, confirm, clearFilters }: any) => (
+        <div style={{ padding: 8 }}>
+          <Input
+            placeholder="Ara"
+            value={selectedKeys[0]}
+            onChange={e => setSelectedKeys(e.target.value ? [e.target.value] : [])}
+            onPressEnter={() => confirm()}
+            style={{ width: 188, marginBottom: 8, display: 'block' }}
+          />
+          <Space>
+            <Button
+              type="primary"
+              onClick={() => confirm()}
+              size="small"
+              style={{ width: 90 }}
+            >
+              Ara
+            </Button>
+            <Button onClick={() => clearFilters()} size="small" style={{ width: 90 }}>
+              Sıfırla
+            </Button>
+          </Space>
+        </div>
+      ),
+      onFilter: (value: any, record: Category) => 
+        record.description?.toLowerCase().includes(value.toLowerCase()) || false,
     },
     {
       title: 'İşlemler',
@@ -402,29 +617,113 @@ const Dashboard: React.FC = () => {
       title: 'Konu Başlığı',
       dataIndex: 'title',
       key: 'title',
-      sorter: (a: Topic, b: Topic) => a.title.localeCompare(b.title),
-      width: '25%',
+      sorter: (a: ExtendedTopic, b: ExtendedTopic) => a.title.localeCompare(b.title),
+      width: '20%',
+      filterDropdown: ({ setSelectedKeys, selectedKeys, confirm, clearFilters }: any) => (
+        <div style={{ padding: 8 }}>
+          <Input
+            placeholder="Ara"
+            value={selectedKeys[0]}
+            onChange={e => setSelectedKeys(e.target.value ? [e.target.value] : [])}
+            onPressEnter={() => confirm()}
+            style={{ width: 188, marginBottom: 8, display: 'block' }}
+          />
+          <Space>
+            <Button
+              type="primary"
+              onClick={() => confirm()}
+              size="small"
+              style={{ width: 90 }}
+            >
+              Ara
+            </Button>
+            <Button onClick={() => clearFilters()} size="small" style={{ width: 90 }}>
+              Sıfırla
+            </Button>
+          </Space>
+        </div>
+      ),
+      onFilter: (value: any, record: ExtendedTopic) => record.title.toLowerCase().includes(value.toLowerCase()),
     },
     {
       title: 'Kategori',
       dataIndex: ['categories', 'name'],
       key: 'category',
-      width: '20%',
+      width: '15%',
       filters: categories.map(cat => ({ text: cat.name, value: cat.id })),
-      onFilter: (value: any, record: Topic) => record.category_id === value,
+      onFilter: (value: any, record: ExtendedTopic) => record.category_id === value,
+    },
+    {
+      title: 'Kısa Açıklama',
+      dataIndex: 'short_description',
+      key: 'short_description',
+      width: '20%',
+      render: (text: string) => text || '-',
+      filterDropdown: ({ setSelectedKeys, selectedKeys, confirm, clearFilters }: any) => (
+        <div style={{ padding: 8 }}>
+          <Input
+            placeholder="Ara"
+            value={selectedKeys[0]}
+            onChange={e => setSelectedKeys(e.target.value ? [e.target.value] : [])}
+            onPressEnter={() => confirm()}
+            style={{ width: 188, marginBottom: 8, display: 'block' }}
+          />
+          <Space>
+            <Button
+              type="primary"
+              onClick={() => confirm()}
+              size="small"
+              style={{ width: 90 }}
+            >
+              Ara
+            </Button>
+            <Button onClick={() => clearFilters()} size="small" style={{ width: 90 }}>
+              Sıfırla
+            </Button>
+          </Space>
+        </div>
+      ),
+      onFilter: (value: any, record: ExtendedTopic) => 
+        record.short_description?.toLowerCase().includes(value.toLowerCase()) || false,
     },
     {
       title: 'Açıklama',
       dataIndex: 'description',
       key: 'description',
-      width: '35%',
+      width: '25%',
       render: (text: string) => text || '-',
+      filterDropdown: ({ setSelectedKeys, selectedKeys, confirm, clearFilters }: any) => (
+        <div style={{ padding: 8 }}>
+          <Input
+            placeholder="Ara"
+            value={selectedKeys[0]}
+            onChange={e => setSelectedKeys(e.target.value ? [e.target.value] : [])}
+            onPressEnter={() => confirm()}
+            style={{ width: 188, marginBottom: 8, display: 'block' }}
+          />
+          <Space>
+            <Button
+              type="primary"
+              onClick={() => confirm()}
+              size="small"
+              style={{ width: 90 }}
+            >
+              Ara
+            </Button>
+            <Button onClick={() => clearFilters()} size="small" style={{ width: 90 }}>
+              Sıfırla
+            </Button>
+          </Space>
+        </div>
+      ),
+      onFilter: (value: any, record: ExtendedTopic) => 
+        record.description?.toLowerCase().includes(value.toLowerCase()) || false,
     },
     {
       title: 'İşlemler',
       key: 'actions',
       width: '20%',
-      render: (_: any, record: Topic) => (
+      render: (_: any, record: ExtendedTopic) => (
         <Space>
           <Button
             type="text"
@@ -456,41 +755,195 @@ const Dashboard: React.FC = () => {
       title: 'Konu',
       dataIndex: ['topics', 'title'],
       key: 'topic',
-      width: '25%',
+      width: '15%',
       filters: topics.map(topic => ({ text: topic.title, value: topic.id })),
-      onFilter: (value: any, record: Content) => record.topic_id === value,
+      onFilter: (value: any, record: ExtendedContent) => record.topic_id === value,
     },
     {
       title: 'Seviye',
       dataIndex: 'level',
       key: 'level',
-      width: '15%',
+      width: '10%',
       filters: [
-        { text: 'A1', value: 'A1' },
-        { text: 'A2', value: 'A2' },
-        { text: 'B1', value: 'B1' },
-        { text: 'B2', value: 'B2' },
-        { text: 'C1', value: 'C1' },
-        { text: 'C2', value: 'C2' },
+        { text: 'Kolay', value: 'easy' },
+        { text: 'Orta', value: 'medium' },
+        { text: 'Zor', value: 'hard' },
       ],
-      onFilter: (value: string, record: Content) => record.level === value,
+      onFilter: (value: string, record: ExtendedContent) => record.level === value,
+      render: (level: string) => {
+        const levelMap: { [key: string]: string } = {
+          easy: 'Kolay',
+          medium: 'Orta',
+          hard: 'Zor',
+        };
+        return levelMap[level] || level;
+      }
+    },
+    {
+      title: 'Kısa Açıklama',
+      dataIndex: 'short_description',
+      key: 'short_description',
+      width: '15%',
+      filterDropdown: ({ setSelectedKeys, selectedKeys, confirm, clearFilters }: any) => (
+        <div style={{ padding: 8 }}>
+          <Input
+            placeholder="Ara"
+            value={selectedKeys[0]}
+            onChange={e => setSelectedKeys(e.target.value ? [e.target.value] : [])}
+            onPressEnter={() => confirm()}
+            style={{ width: 188, marginBottom: 8, display: 'block' }}
+          />
+          <Space>
+            <Button
+              type="primary"
+              onClick={() => confirm()}
+              size="small"
+              style={{ width: 90 }}
+            >
+              Ara
+            </Button>
+            <Button onClick={() => clearFilters()} size="small" style={{ width: 90 }}>
+              Sıfırla
+            </Button>
+          </Space>
+        </div>
+      ),
+      onFilter: (value: any, record: ExtendedContent) => 
+        record.short_description?.toLowerCase().includes(value.toLowerCase()) || false,
+    },
+    {
+      title: 'Açıklama',
+      dataIndex: 'description',
+      key: 'description',
+      width: '15%',
+      render: (text: string) => text || '-',
+      filterDropdown: ({ setSelectedKeys, selectedKeys, confirm, clearFilters }: any) => (
+        <div style={{ padding: 8 }}>
+          <Input
+            placeholder="Ara"
+            value={selectedKeys[0]}
+            onChange={e => setSelectedKeys(e.target.value ? [e.target.value] : [])}
+            onPressEnter={() => confirm()}
+            style={{ width: 188, marginBottom: 8, display: 'block' }}
+          />
+          <Space>
+            <Button
+              type="primary"
+              onClick={() => confirm()}
+              size="small"
+              style={{ width: 90 }}
+            >
+              Ara
+            </Button>
+            <Button onClick={() => clearFilters()} size="small" style={{ width: 90 }}>
+              Sıfırla
+            </Button>
+          </Space>
+        </div>
+      ),
+      onFilter: (value: any, record: ExtendedContent) => 
+        record.description?.toLowerCase().includes(value.toLowerCase()) || false,
     },
     {
       title: 'İçerik',
       dataIndex: 'content',
       key: 'content',
-      width: '40%',
+      width: '20%',
       render: (text: string) => (
         <div className="content-text">
           {text}
         </div>
-      )
+      ),
+      filterDropdown: ({ setSelectedKeys, selectedKeys, confirm, clearFilters }: any) => (
+        <div style={{ padding: 8 }}>
+          <Input
+            placeholder="Ara"
+            value={selectedKeys[0]}
+            onChange={e => setSelectedKeys(e.target.value ? [e.target.value] : [])}
+            onPressEnter={() => confirm()}
+            style={{ width: 188, marginBottom: 8, display: 'block' }}
+          />
+          <Space>
+            <Button
+              type="primary"
+              onClick={() => confirm()}
+              size="small"
+              style={{ width: 90 }}
+            >
+              Ara
+            </Button>
+            <Button onClick={() => clearFilters()} size="small" style={{ width: 90 }}>
+              Sıfırla
+            </Button>
+          </Space>
+        </div>
+      ),
+      onFilter: (value: any, record: ExtendedContent) => 
+        record.content?.toLowerCase().includes(value.toLowerCase()) || false,
+    },
+    {
+      title: 'Etiketler',
+      dataIndex: 'tags',
+      key: 'tags',
+      width: '15%',
+      render: (tags: string[]) => (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+          {tags?.map((tag, index) => (
+            <code 
+              key={index}
+              style={{ 
+                fontFamily: 'monospace',
+                backgroundColor: '#f5f5f5',
+                border: '1px solid #ddd',
+                borderRadius: '3px',
+                padding: '2px 5px',
+                fontSize: '12px',
+                color: '#333',
+                display: 'inline-block',
+                margin: '2px'
+              }}
+            >
+              {tag}
+            </code>
+          ))}
+        </div>
+      ),
+      filterDropdown: ({ setSelectedKeys, selectedKeys, confirm, clearFilters }: any) => (
+        <div style={{ padding: 8 }}>
+          <Input
+            placeholder="Etiket ara"
+            value={selectedKeys[0]}
+            onChange={e => setSelectedKeys(e.target.value ? [e.target.value] : [])}
+            onPressEnter={() => confirm()}
+            style={{ width: 188, marginBottom: 8, display: 'block' }}
+          />
+          <Space>
+            <Button
+              type="primary"
+              onClick={() => confirm()}
+              size="small"
+              style={{ width: 90 }}
+            >
+              Ara
+            </Button>
+            <Button onClick={() => clearFilters()} size="small" style={{ width: 90 }}>
+              Sıfırla
+            </Button>
+          </Space>
+        </div>
+      ),
+      onFilter: (value: any, record: ExtendedContent) => {
+        if (!record.tags) return false;
+        const tagStr = record.tags.join(' ').toLowerCase();
+        return tagStr.includes(value.toLowerCase());
+      },
+      filters: [...new Set(allTags)].map(tag => ({ text: tag, value: tag })),
     },
     {
       title: 'Ses',
       key: 'audio',
       width: '15%',
-      render: (_: any, record: Content) => (
+      render: (_: any, record: ExtendedContent) => (
         <Space>
           {record.audio_url ? (
             <>
@@ -531,9 +984,9 @@ const Dashboard: React.FC = () => {
                 return false;
               }}
             >
-              <Button 
-                type="text" 
-                icon={<UploadOutlined />} 
+              <Button
+                type="text"
+                icon={<UploadOutlined />}
                 className="action-button"
                 title="Ses Yükle"
                 loading={audioLoading}
@@ -542,12 +995,21 @@ const Dashboard: React.FC = () => {
           )}
         </Space>
       ),
+      filters: [
+        { text: 'Ses Var', value: 'hasAudio' },
+        { text: 'Ses Yok', value: 'noAudio' },
+      ],
+      onFilter: (value: any, record: ExtendedContent) => {
+        if (value === 'hasAudio') return !!record.audio_url;
+        if (value === 'noAudio') return !record.audio_url;
+        return true;
+      },
     },
     {
       title: 'İşlemler',
       key: 'actions',
       width: '20%',
-      render: (_: any, record: Content) => (
+      render: (_: any, record: ExtendedContent) => (
         <Space>
           <Button
             type="text"
@@ -687,7 +1149,7 @@ const Dashboard: React.FC = () => {
       <Modal
         title={editingCategory ? 'Kategori Düzenle' : 'Yeni Kategori'}
         open={modalVisible}
-        onCancel={() => setModalVisible(false)}
+        onCancel={closeCategoryModal}
         footer={null}
       >
         <Form
@@ -704,13 +1166,13 @@ const Dashboard: React.FC = () => {
             <Input />
           </Form.Item>
 
-          <Form.Item name="description" label="Açıklama">
+          <Form.Item name="description" label="Açıklama" rules={[{ required: true, message: 'Lütfen kısa açıklama girin!' }]}>
             <Input.TextArea />
           </Form.Item>
 
           <Form.Item className="mb-0 flex justify-end">
             <Space>
-              <Button onClick={() => setModalVisible(false)}>İptal</Button>
+              <Button onClick={closeCategoryModal}>İptal</Button>
               <Button type="primary" htmlType="submit" loading={loading}>
                 {editingCategory ? 'Güncelle' : 'Ekle'}
               </Button>
@@ -722,7 +1184,7 @@ const Dashboard: React.FC = () => {
       <Modal
         title={editingTopic ? 'Konu Düzenle' : 'Yeni Konu'}
         open={topicModalVisible}
-        onCancel={() => setTopicModalVisible(false)}
+        onCancel={closeTopicModal}
         footer={null}
       >
         <Form
@@ -753,13 +1215,21 @@ const Dashboard: React.FC = () => {
             <Input />
           </Form.Item>
 
-          <Form.Item name="description" label="Açıklama">
+          <Form.Item
+            name="short_description"
+            label="Kısa Açıklama"
+            rules={[{ required: true, message: 'Lütfen kısa açıklama girin!' }]}
+          >
+            <Input />
+          </Form.Item>
+
+          <Form.Item name="description" label="Açıklama" rules={[{ required: true, message: 'Lütfen açıklama girin!' }]}>
             <Input.TextArea />
           </Form.Item>
 
           <Form.Item className="mb-0 flex justify-end">
             <Space>
-              <Button onClick={() => setTopicModalVisible(false)}>İptal</Button>
+              <Button onClick={closeTopicModal}>İptal</Button>
               <Button type="primary" htmlType="submit" loading={loading}>
                 {editingTopic ? 'Güncelle' : 'Ekle'}
               </Button>
@@ -771,14 +1241,13 @@ const Dashboard: React.FC = () => {
       <Modal
         title={editingContent ? 'İçerik Düzenle' : 'Yeni İçerik'}
         open={contentModalVisible}
-        onCancel={() => setContentModalVisible(false)}
+        onCancel={closeContentModal}
         footer={null}
       >
         <Form
           form={contentForm}
           layout="vertical"
           onFinish={handleAddEditContent}
-          initialValues={editingContent || {}}
         >
           <Form.Item
             name="topic_id"
@@ -793,17 +1262,35 @@ const Dashboard: React.FC = () => {
               ))}
             </Select>
           </Form.Item>
+
           <Form.Item
             name="level"
             label="Seviye"
             rules={[{ required: true, message: 'Lütfen bir seviye seçin' }]}
           >
             <Select placeholder="Seviye seçin">
-              <Select.Option value="beginner">Başlangıç</Select.Option>
-              <Select.Option value="intermediate">Orta</Select.Option>
-              <Select.Option value="advanced">İleri</Select.Option>
+              <Select.Option value="easy">Kolay</Select.Option>
+              <Select.Option value="medium">Orta</Select.Option>
+              <Select.Option value="hard">Zor</Select.Option>
             </Select>
           </Form.Item>
+
+          <Form.Item
+            name="short_description"
+            label="Kısa Açıklama"
+            rules={[{ required: true, message: 'Lütfen kısa bir açıklama girin' }]}
+          >
+            <Input />
+          </Form.Item>
+
+          <Form.Item
+            name="description"
+            label="Açıklama"
+            rules={[{ required: true, message: 'Lütfen açıklama girin' }]}
+          >
+            <Input.TextArea rows={4} />
+          </Form.Item>
+
           <Form.Item
             name="content"
             label="İçerik"
@@ -811,12 +1298,25 @@ const Dashboard: React.FC = () => {
           >
             <Input.TextArea rows={6} />
           </Form.Item>
+
+          <Form.Item
+            name="tags"
+            label="Etiketler"
+            rules={[{ required: true, message: 'Lütfen en az bir etiket girin' }]}
+          >
+            <Select
+              mode="tags"
+              placeholder="Etiket eklemek için yazın"
+              options={allTags.map(tag => ({ label: tag, value: tag }))}
+            />
+          </Form.Item>
+
           <Form.Item>
             <Space>
               <Button type="primary" htmlType="submit" loading={loading}>
                 {editingContent ? 'Güncelle' : 'Ekle'}
               </Button>
-              <Button onClick={() => setContentModalVisible(false)}>İptal</Button>
+              <Button onClick={closeContentModal}>İptal</Button>
             </Space>
           </Form.Item>
         </Form>
